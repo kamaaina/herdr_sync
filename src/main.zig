@@ -69,7 +69,7 @@ pub fn main(init: std.process.Init) !u8 {
     defer response.deinit();
 
     const tabs: []Tab = response.value.result.tabs;
-    std.debug.print("# tabs: {d}\n", .{tabs.len});
+    //std.debug.print("# tabs: {d}\n", .{tabs.len});
 
     var selected_tab: usize = 0;
     for (tabs, 0..) |tab, i| {
@@ -78,7 +78,7 @@ pub fn main(init: std.process.Init) !u8 {
             break;
         }
     }
-    std.debug.print("tab index: {d}\n", .{selected_tab});
+    //std.debug.print("tab index: {d}\n", .{selected_tab});
 
     // get list of non-focused panes
 
@@ -105,11 +105,46 @@ pub fn main(init: std.process.Init) !u8 {
     defer pane_response.deinit();
 
     const panes: []Pane = pane_response.value.result.panes;
-    std.debug.print("# panes: {d}\n", .{panes.len});
+    //std.debug.print("# panes: {d}\n", .{panes.len});
 
+    var txt_to_send: []const u8 = "";
     for (panes) |pane| {
         if (pane.focused) {
             // TODO: get the last line of the pane as this is what we need to send to others
+            // herdr pane read "wG:p3" --lines 1
+            var get_txt_cmd: std.ArrayList([]const u8) = .empty;
+            defer get_txt_cmd.deinit(allocator);
+            try get_txt_cmd.append(allocator, "herdr");
+            try get_txt_cmd.append(allocator, "pane");
+            try get_txt_cmd.append(allocator, "read");
+            try get_txt_cmd.append(allocator, pane.pane_id);
+            try get_txt_cmd.append(allocator, "--lines");
+            try get_txt_cmd.append(allocator, "1");
+
+            const get_cmd_result = try std.process.run(allocator, io, .{
+                .argv = get_txt_cmd.items,
+            });
+            defer allocator.free(get_cmd_result.stdout);
+            defer allocator.free(get_cmd_result.stderr);
+
+            //
+            const delimiter = "> ";
+
+            // Find the starting index of "> "
+            std.debug.print("@@@ {s}\n", .{get_cmd_result.stdout});
+            var command_start: usize = 0;
+            if (std.mem.indexOf(u8, get_cmd_result.stdout, delimiter)) |index| {
+                // Calculate the starting position of the actual command
+                command_start = index + delimiter.len;
+                //const res = get_cmd_result.stdout[command_start..];
+                txt_to_send = try allocator.dupe(u8, get_cmd_result.stdout[command_start..]);
+
+                // Print the extracted string
+                //std.debug.print("Result: {s}\n", .{res});
+                std.debug.print("######### txt_to_send: {s}\n", .{txt_to_send});
+            } else {
+                std.debug.print("Delimiter not found.\n", .{});
+            }
 
             // send "enter" to current selected pane to issue command
             var cmd: std.ArrayList([]const u8) = .empty;
@@ -117,8 +152,15 @@ pub fn main(init: std.process.Init) !u8 {
 
             try cmd.append(allocator, "herdr");
             try cmd.append(allocator, "pane");
-            try cmd.append(allocator, "run");
-            try cmd.append(allocator, "\"\"");
+            try cmd.append(allocator, "send-text");
+            try cmd.append(allocator, pane.pane_id);
+            try cmd.append(allocator, "\n");
+
+            const cmd_result = try std.process.run(allocator, io, .{
+                .argv = cmd.items,
+            });
+            defer allocator.free(cmd_result.stdout);
+            defer allocator.free(cmd_result.stderr);
 
             continue;
         }
@@ -126,21 +168,44 @@ pub fn main(init: std.process.Init) !u8 {
             continue;
         }
 
+        std.debug.print("LLLLLLLL txt_to_send: {s}\n", .{txt_to_send});
+
         var txt_cmd: std.ArrayList([]const u8) = .empty;
         defer txt_cmd.deinit(allocator);
-        std.debug.print("herdr pane send-text {s} {s}\n", .{ pane.pane_id, "ls" });
+        //std.debug.print("herdr pane send-text {s} {s}\n", .{ pane.pane_id, "ls" });
         try txt_cmd.append(allocator, "herdr");
         try txt_cmd.append(allocator, "pane");
         try txt_cmd.append(allocator, "send-text");
-        try txt_cmd.append(allocator, "ls"); // FIXME: testing
+        try txt_cmd.append(allocator, pane.pane_id);
+        try txt_cmd.append(allocator, txt_to_send);
 
-        var run_cmd: std.ArrayList([]const u8) = .empty;
-        defer run_cmd.deinit(allocator);
-        std.debug.print("herdr pane run {s}\n", .{""});
-        try run_cmd.append(allocator, "herdr");
-        try run_cmd.append(allocator, "pane");
-        try run_cmd.append(allocator, "run");
-        try run_cmd.append(allocator, "\"\"");
+        const txt_cmd_result = try std.process.run(allocator, io, .{
+            .argv = txt_cmd.items,
+        });
+        defer allocator.free(txt_cmd_result.stdout);
+        defer allocator.free(txt_cmd_result.stderr);
+
+        if (txt_cmd_result.term.exited != 0) {
+            std.debug.print("send-text command failed with error output:\n{s}\n", .{txt_cmd_result.stderr});
+            return error.CommandFailed;
+        }
+
+        //var run_cmd: std.ArrayList([]const u8) = .empty;
+        //defer run_cmd.deinit(allocator);
+        ////std.debug.print("herdr pane run {s}\n", .{""});
+        //try run_cmd.append(allocator, "herdr");
+        //try run_cmd.append(allocator, "pane");
+        //try run_cmd.append(allocator, "run");
+        //try run_cmd.append(allocator, pane.pane_id);
+        //try run_cmd.append(allocator, "\"\"");
+
+        //const run_cmd_result = try std.process.run(allocator, io, .{
+        //    .argv = run_cmd.items,
+        //});
+        //defer allocator.free(run_cmd_result.stdout);
+        //defer allocator.free(run_cmd_result.stderr);
+        ////std.debug.print("herdr_sync done\n", .{});
+
     }
 
     return 0;
