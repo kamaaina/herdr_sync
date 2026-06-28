@@ -9,5 +9,5 @@ platforms = ["linux", "macos"]
 id = "sync-panes"
 title = "Sync Panes"
 description = "Executes the same command in all panes in tab"
-command = ["/home/mike/devel/myzig/herdr_sync/zig-out/herdr_sync", "--flag"]
+command = ["/home/mike/devel/myzig/herdr_sync/zig-out/bin/herdr_sync", "--flag"]
 
