@@ -6,7 +6,7 @@ This plugin will synchronize the commands to all other panes in the current tab
 - zig 0.16
 
 ** Installation
-##+begin_src bash
+#+begin_src bash
 git clone https://github.com/kamaaina/herdr_sync
 cd herdr_sync
 zig build
@@ -16,7 +16,7 @@ herdr plugin link /path/to/herdr_sync  # local checkout
 *** Key Binding
 Setup a key binding to trigger the plugin. eg. this binds it to prefix+shift+e
 
-##+begin_src toml
+#+begin_src toml
 [[keys.command]]
 key = "prefix+shift+e"
 type = "plugin_action"
