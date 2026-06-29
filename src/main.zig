@@ -31,9 +31,62 @@ const Pane = struct {
     tab_id: []const u8,
 };
 
+pub const Config: type = struct {
+    terminal_prompt: []const u8,
+};
+
+pub fn load_config(
+    io: std.Io,
+    allocator: std.mem.Allocator,
+    path: []const u8,
+) !Config {
+    const contents = try std.Io.Dir.cwd().readFileAllocOptions(
+        io,
+        path,
+        allocator,
+        .limited(1024 * 1024),
+        .of(u8),
+        0, // sentinel
+    );
+    defer allocator.free(contents);
+
+    var diagnostics: std.zon.parse.Diagnostics = .{};
+    defer diagnostics.deinit(allocator);
+
+    return try std.zon.parse.fromSliceAlloc(
+        Config,
+        allocator,
+        contents,
+        &diagnostics,
+        .{ .free_on_error = true },
+    );
+}
+
 pub fn main(init: std.process.Init) !u8 {
     const io = init.io;
     const allocator = init.gpa;
+
+    // get the plugin configuration
+    var cfg_argv = [_][]const u8{
+        "herdr",
+        "plugin",
+        "config-dir",
+        "sync-plugin",
+    };
+
+    const cfg_result = try std.process.run(allocator, io, .{
+        .argv = &cfg_argv,
+    });
+    defer allocator.free(cfg_result.stdout);
+    defer allocator.free(cfg_result.stderr);
+    const trimmed_dir = std.mem.trimEnd(u8, cfg_result.stdout, "\n");
+    std.log.debug("config dir: {s}", .{trimmed_dir});
+    const cfg_file = try std.mem.concat(allocator, u8, &[_][]const u8{ trimmed_dir, "/herdr_sync.zon" });
+    std.log.debug("config file: {s}", .{cfg_file});
+    defer allocator.free(cfg_file);
+    const config: Config = try load_config(io, allocator, cfg_file);
+    defer std.zon.parse.free(allocator, config);
+    std.log.debug("config - terminal_prompt: {s}", .{config.terminal_prompt});
 
     // find the active tab
     var argv = [_][]const u8{
@@ -116,10 +169,10 @@ pub fn main(init: std.process.Init) !u8 {
             defer allocator.free(get_cmd_result.stderr);
 
             // TODO: make the delimiter a configuration option
-            const delimiter = "> ";
+            const delimiter = config.terminal_prompt;
 
             // find the starting index of the delimiter
-            std.debug.print("@read@ '{s}'\n", .{get_cmd_result.stdout});
+            std.debug.print("!@read@! '{s}'\n", .{get_cmd_result.stdout});
             var command_start: usize = 0;
             if (std.mem.indexOf(u8, get_cmd_result.stdout, delimiter)) |index| {
                 command_start = index + delimiter.len; // starting position of the actual command
