@@ -2,12 +2,11 @@ id = "sync-plugin"
 name = "Sync Plugin"
 version = "0.1.0"
 min_herdr_version = "0.7.0"
-description = "Small workspace helpers"
+description = "send the same command to all panes in the current tab"
 platforms = ["linux", "macos"]
 
 [[actions]]
 id = "sync-panes"
 title = "Sync Panes"
 description = "Executes the same command in all panes in tab"
-command = ["/home/mike/devel/myzig/herdr_sync/zig-out/bin/herdr_sync", "--flag"]
-
+command = ["./zig-out/bin/herdr_sync"]
