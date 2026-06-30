@@ -2,4 +2,10 @@
     // what your terminal prompt ends with
     // for example, in bash and logged in a root, it would be '# '
     .terminal_prompt = "> ",
+
+    // panes with these names will be omitted from synchronization
+    .ignore_panes = .{
+        "ignore",
+        "mushi",
+    },
 }
