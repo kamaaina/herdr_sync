@@ -67,19 +67,17 @@ pub fn main(init: std.process.Init) !u8 {
     const allocator = init.gpa;
 
     // get the plugin configuration
-    var cfg_argv = [_][]const u8{
+    var get_cfg = [_][]const u8{
         "herdr",
         "plugin",
         "config-dir",
         "sync-plugin",
     };
 
-    const cfg_result = try std.process.run(allocator, io, .{
-        .argv = &cfg_argv,
+    var result = try std.process.run(allocator, io, .{
+        .argv = &get_cfg,
     });
-    defer allocator.free(cfg_result.stdout);
-    defer allocator.free(cfg_result.stderr);
-    const trimmed_dir = std.mem.trimEnd(u8, cfg_result.stdout, "\n");
+    const trimmed_dir = std.mem.trimEnd(u8, result.stdout, "\n");
     std.log.debug("config dir: {s}", .{trimmed_dir});
     const cfg_file = try std.mem.concat(allocator, u8, &[_][]const u8{ trimmed_dir, "/herdr_sync.zon" });
     std.log.debug("config file: {s}", .{cfg_file});
@@ -87,22 +85,24 @@ pub fn main(init: std.process.Init) !u8 {
     const config: Config = try load_config(io, allocator, cfg_file);
     defer std.zon.parse.free(allocator, config);
     std.log.debug("config - terminal_prompt: {s}", .{config.terminal_prompt});
+    allocator.free(result.stdout);
+    allocator.free(result.stderr);
 
     // find the active tab
-    var argv = [_][]const u8{
+    var hcmd = [_][]const u8{
         "herdr",
         "tab",
         "list",
     };
 
-    const result = try std.process.run(allocator, io, .{
-        .argv = &argv,
+    result = try std.process.run(allocator, io, .{
+        .argv = &hcmd,
     });
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
     if (result.term.exited != 0) {
-        std.debug.print("Command failed with error output:\n{s}\n", .{result.stderr});
+        std.debug.print("tab list command failed with error output: {s}\n", .{result.stderr});
         return error.CommandFailed;
     }
 
@@ -122,20 +122,20 @@ pub fn main(init: std.process.Init) !u8 {
     }
 
     // get panes in the tab
-    argv = [_][]const u8{
+    hcmd = [_][]const u8{
         "herdr",
         "pane",
         "list",
     };
 
     const pane_result = try std.process.run(allocator, io, .{
-        .argv = &argv,
+        .argv = &hcmd,
     });
     defer allocator.free(pane_result.stdout);
     defer allocator.free(pane_result.stderr);
 
     if (pane_result.term.exited != 0) {
-        std.debug.print("Command failed with error output:\n{s}\n", .{pane_result.stderr});
+        std.debug.print("pane list command failed with error output: {s}\n", .{pane_result.stderr});
         return error.CommandFailed;
     }
 
@@ -147,6 +147,7 @@ pub fn main(init: std.process.Init) !u8 {
     const panes: []Pane = pane_response.value.result.panes;
 
     var txt_to_send: []const u8 = "";
+    defer allocator.free(txt_to_send);
     for (panes) |pane| {
         if (pane.focused) {
             // get the last line of the pane as this is what we need to send to others
@@ -168,19 +169,33 @@ pub fn main(init: std.process.Init) !u8 {
             defer allocator.free(get_cmd_result.stdout);
             defer allocator.free(get_cmd_result.stderr);
 
-            // TODO: make the delimiter a configuration option
             const delimiter = config.terminal_prompt;
 
             // find the starting index of the delimiter
-            std.debug.print("!@read@! '{s}'\n", .{get_cmd_result.stdout});
+            std.log.debug("read: '{s}'", .{get_cmd_result.stdout});
             var command_start: usize = 0;
             if (std.mem.indexOf(u8, get_cmd_result.stdout, delimiter)) |index| {
                 command_start = index + delimiter.len; // starting position of the actual command
                 txt_to_send = try allocator.dupe(u8, get_cmd_result.stdout[command_start..]);
-                std.debug.print("txt_to_send: {s}\n", .{txt_to_send});
+                std.log.debug("txt_to_send: {s}", .{txt_to_send});
             } else {
-                // TODO: use framework to send a notification back
                 std.debug.print("delimiter not found.\n", .{});
+                var notify_cmd = [_][]const u8{
+                    "herdr",
+                    "notification",
+                    "show",
+                    "herdr_sync",
+                    "--body",
+                    "nothing found to send",
+                    "--position",
+                    "bottom-right",
+                };
+                const notify_res = try std.process.run(allocator, io, .{
+                    .argv = &notify_cmd,
+                });
+                defer allocator.free(notify_res.stdout);
+                defer allocator.free(notify_res.stderr);
+                return 1;
             }
 
             // send "enter" to current selected pane to issue command
@@ -220,9 +235,25 @@ pub fn main(init: std.process.Init) !u8 {
         defer allocator.free(txt_cmd_result.stderr);
 
         if (txt_cmd_result.term.exited != 0) {
-            std.debug.print("send-text command failed with error output:\n{s}\n", .{txt_cmd_result.stderr});
+            std.debug.print("send-text command failed with error output: {s}\n", .{txt_cmd_result.stderr});
             return error.CommandFailed;
         }
+
+        var notify_cmd = [_][]const u8{
+            "herdr",
+            "notification",
+            "show",
+            "herdr_sync",
+            "--body",
+            "data sent to panes",
+            "--position",
+            "bottom-right",
+        };
+        const notify_res = try std.process.run(allocator, io, .{
+            .argv = &notify_cmd,
+        });
+        defer allocator.free(notify_res.stdout);
+        defer allocator.free(notify_res.stderr);
     }
 
     return 0;
