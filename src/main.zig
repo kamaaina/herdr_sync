@@ -27,12 +27,14 @@ const PaneResult = struct {
 
 const Pane = struct {
     focused: bool,
+    label: ?[]const u8 = null,
     pane_id: []const u8,
     tab_id: []const u8,
 };
 
 pub const Config: type = struct {
     terminal_prompt: []const u8,
+    ignore_panes: [][]const u8,
 };
 
 pub fn load_config(
@@ -62,6 +64,15 @@ pub fn load_config(
     );
 }
 
+fn should_ignore(panes: []const []const u8, target: []const u8) bool {
+    for (panes) |pane| {
+        if (std.mem.eql(u8, pane, target)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn main(init: std.process.Init) !u8 {
     const io = init.io;
     const allocator = init.gpa;
@@ -78,13 +89,12 @@ pub fn main(init: std.process.Init) !u8 {
         .argv = &get_cfg,
     });
     const trimmed_dir = std.mem.trimEnd(u8, result.stdout, "\n");
-    std.log.debug("config dir: {s}", .{trimmed_dir});
     const cfg_file = try std.mem.concat(allocator, u8, &[_][]const u8{ trimmed_dir, "/herdr_sync.zon" });
     std.log.debug("config file: {s}", .{cfg_file});
     defer allocator.free(cfg_file);
     const config: Config = try load_config(io, allocator, cfg_file);
     defer std.zon.parse.free(allocator, config);
-    std.log.debug("config - terminal_prompt: {s}", .{config.terminal_prompt});
+    //std.log.debug("config - terminal_prompt: {s}", .{config.terminal_prompt});
     allocator.free(result.stdout);
     allocator.free(result.stderr);
 
@@ -179,7 +189,7 @@ pub fn main(init: std.process.Init) !u8 {
                 txt_to_send = try allocator.dupe(u8, get_cmd_result.stdout[command_start..]);
                 std.log.debug("txt_to_send: {s}", .{txt_to_send});
             } else {
-                std.debug.print("delimiter not found.\n", .{});
+                std.log.debug("delimiter not found.", .{});
                 var notify_cmd = [_][]const u8{
                     "herdr",
                     "notification",
@@ -195,7 +205,7 @@ pub fn main(init: std.process.Init) !u8 {
                 });
                 defer allocator.free(notify_res.stdout);
                 defer allocator.free(notify_res.stderr);
-                return 1;
+                std.process.exit(1);
             }
 
             // send "enter" to current selected pane to issue command
@@ -217,6 +227,10 @@ pub fn main(init: std.process.Init) !u8 {
             continue;
         }
         if (!std.mem.eql(u8, pane.tab_id, tabs[selected_tab].tab_id)) {
+            continue;
+        }
+
+        if ((pane.label != null) and (should_ignore(config.ignore_panes, pane.label.?))) {
             continue;
         }
 

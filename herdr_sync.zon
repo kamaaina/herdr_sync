@@ -4,8 +4,5 @@
     .terminal_prompt = "> ",
 
     // panes with these names will be omitted from synchronization
-    .ignore_panes = .{
-        "ignore",
-        "mushi",
-    },
+    .ignore_panes = .{ "ignore", "mushi" },
 }
