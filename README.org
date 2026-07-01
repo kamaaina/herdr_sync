@@ -11,6 +11,10 @@ git clone https://github.com/kamaaina/herdr_sync
 cd herdr_sync
 zig build
 herdr plugin link /path/to/herdr_sync  # local checkout
+
+# guessing the herdr plugin install should take care of this, but i am probably
+# doing something wrong so copying it manually
+cp herdr_sync.zon ~/.config/herdr/plugins/config/sync-plugin
 #+end_src
 
 *** Key Binding
@@ -25,5 +29,25 @@ description = "synchronize panes"
 #+end_src
 
 ** Usage
+
+*** Configuration
+
+Modify the herdr_sync.zon as necessary
+
+#+begin_src zon
+.{
+    // what your terminal prompt ends with
+    // for example, in bash and logged in a root, it would be '# '
+    .terminal_prompt = "> ",
+
+    // panes with these names will be omitted from synchronization
+    .ignore_panes = .{ "ignore", "mushi" },
+}
+#+end_src
+
+*** Notification
+
+If you have notifications enabled in your herdr config, you will get notification
+from this plugin in the bottom right corner
 
 Type a command in your pane, but do not hit enter. Instead use the keymap you define (eg. prefix+shift+e)
